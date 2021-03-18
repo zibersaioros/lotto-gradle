@@ -3,6 +3,8 @@ package com.rs.lottogradle.lotto.model;
 import lombok.Data;
 import org.springframework.data.mongodb.core.mapping.MongoId;
 
+import java.util.List;
+
 @Data
 public class Round {
 
@@ -17,4 +19,6 @@ public class Round {
     private Integer num5_ord;
     private Integer num6_ord;
     private Integer num7;
+    private List<Integer> nums;
+    private List<Integer> nums_ord;
 }

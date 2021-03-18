@@ -3,8 +3,10 @@ package com.rs.lottogradle;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
+import java.util.IntSummaryStatistics;
 import java.util.List;
 import java.util.OptionalDouble;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class DummyTest {
@@ -68,8 +70,12 @@ public class DummyTest {
                 , 344);
 
 //        System.out.println(intStream.count());
-
-        OptionalDouble average = intStream.average();
-        System.out.println(average.getAsDouble());
+        IntSummaryStatistics statistics = intStream.summaryStatistics();
+//
+//        OptionalDouble average = intStream.average();
+        System.out.println(statistics.getAverage());
+        System.out.println(statistics.getCount());
+        System.out.println(statistics.getMax());
+        System.out.println(statistics.getMin());
     }
 }
