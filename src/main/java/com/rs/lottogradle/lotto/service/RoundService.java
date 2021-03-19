@@ -42,6 +42,10 @@ public class RoundService {
 
     }
 
+    public List<Round> findAllByOrderByRoundDesc(){
+        return roundRepository.findAllByOrderByRoundDesc();
+    }
+
     private void updateRound(int min){
         log.debug("마지막 회차 : {}" , getLastRound());
         int lastRound = getLastRound();
@@ -54,7 +58,7 @@ public class RoundService {
         }
     }
 
-    public int getLastRound(){
+    public static int getLastRound(){
         LocalDateTime old = LocalDateTime.of(YEAR, MONTH, DAY, 0, 0);
         long diff = System.currentTimeMillis() - old.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
         long diffRound = diff / (1000 * 60 * 60 * 24 * 7);
@@ -70,9 +74,9 @@ public class RoundService {
         nums.add(r.getNum4_ord());
         nums.add(r.getNum5_ord());
         nums.add(r.getNum6_ord());
-        nums.add(r.getNum7());
 
         numsOrd.addAll(nums);
+        numsOrd.add(r.getNum7());
         r.setNums_ord(numsOrd);
         nums.sort(Comparator.naturalOrder());
         r.setNums(nums);
