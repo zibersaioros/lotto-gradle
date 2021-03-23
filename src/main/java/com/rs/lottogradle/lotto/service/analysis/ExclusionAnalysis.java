@@ -27,7 +27,7 @@ public class ExclusionAnalysis implements Analysis {
         //전체 기록표 가져옴.
         List<Round> rounds = roundService.findAllByOrderByRoundDesc();
 
-        //최근 20주만 체크.
+        //최근 analyseCount주만큼 체크.
         for(int start = offset; start < analyseCount + offset; start++){
             // 각 회차별로 과거 몇회차에서 제외수가 나왔는지 체크
             Round startRound = rounds.get(start);

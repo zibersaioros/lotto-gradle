@@ -1,9 +1,15 @@
 package com.rs.lottogradle.lotto.service;
 
+import com.google.common.collect.Maps;
+import com.rs.lottogradle.lotto.model.AnalysisResult;
+import com.rs.lottogradle.lotto.model.AnalysisSummary;
 import com.rs.lottogradle.lotto.model.Round;
+import com.rs.lottogradle.lotto.model.Verification;
 import com.rs.lottogradle.lotto.repository.RoundRepository;
+import com.rs.lottogradle.lotto.repository.VerificationRepository;
 import com.rs.lottogradle.lotto.service.analysis.Analysis;
 import com.rs.lottogradle.lotto.service.analysis.ExclusionAnalysis;
+import com.rs.lottogradle.lotto.service.analysis.FrequencyAnalysis;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.math3.util.CombinatoricsUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +18,7 @@ import org.springframework.stereotype.Service;
 import javax.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @Slf4j
@@ -22,72 +29,94 @@ public class LottoService {
 
     @Autowired
     private RoundRepository roundRepository;
+    @Autowired
+    private VerificationRepository verificationRepository;
 
-
-    double standard5;
-    double standard4;
-    double standard3;
-
-    double standardDenominator6;
-    double standardDenominator5;
-    double standardDenominator4;
-    double standardDenominator3;
-
-    double[] standardDenominator = {
-            getHitRateDenominator(45, 6, 6),
-            getHitRateDenominator(45, 6, 5),
-            getHitRateDenominator(45, 6, 4),
-            getHitRateDenominator(45, 6, 3)
-    };
-
-    @PostConstruct
-    public void postConstruct(){
-        standard5 = getHitRate(45, 6, 5);
-        standard4 = getHitRate(45, 6, 4);
-        standard3 = getHitRate(45, 6, 3);
-        standardDenominator6 = getHitRateDenominator(45, 6, 6);
-        standardDenominator5 = getHitRateDenominator(45, 6, 5);
-        standardDenominator4 = getHitRateDenominator(45, 6, 4);
-        standardDenominator3 = getHitRateDenominator(45, 6, 3);
+    public static final Map<Integer, Double> standardDenominatorMap;
+    static {
+        standardDenominatorMap = Maps.newHashMap();
+        for(int win = 6; win > 2; win--){
+            standardDenominatorMap.put(win, getHitRateDenominator(45, 6, win));
+        }
     }
 
-    public String verify(int testCount, Analysis analysis){
-        double[] denominatorSum = {0, 0, 0, 0};
-        int[] invalidCount = {0, 0, 0, 0};
+    public static double getStandardDenominator(int win){
+        return standardDenominatorMap.get(win);
+    }
 
-        StringBuffer sb = new StringBuffer();
-        sb.append("========verifyExclusionNumbers start========").append("\n");
+
+    public AnalysisSummary verify(int testCount, Analysis analysis){
+        Map<Integer, Double> denominatorSum = Maps.newHashMap();
+        Map<Integer, Integer> invalidCount = Maps.newHashMap();
+
+        AnalysisSummary analysisSummary = new AnalysisSummary();
         for(int i = 0; i < testCount; i++){
-
-            int targetRound = roundService.getLastRound() - i;
-            sb.append("---------- round : " + targetRound + " start ----------- ").append("\n");
-            List<Integer> expectedNumbers = analysis.getNumbers(targetRound);
-            int hitCount = getHitCount(expectedNumbers, targetRound);
-            sb.append("count : " + expectedNumbers.size() + " hit : " + hitCount).append("\n");
+            AnalysisResult result = new AnalysisResult();
+            result.setTargetRound(roundService.getLastRound() - i);
+            List<Integer> expectedNumbers = analysis.getNumbers(result.getTargetRound());
+            result.setCount(expectedNumbers.size());
+            result.setHit(getHitCount(expectedNumbers, result.getTargetRound()));
             for(int win = 6 ; win > 2; win--){
-                sb.append(win + " : " + getHitRateString(expectedNumbers.size(), hitCount, win)).append("\n");
-
-                double denominator = getHitRateDenominator(expectedNumbers.size(), hitCount, win);
-                if(denominator == -1 || denominator > standardDenominator[6-win]){
-                    denominator = standardDenominator[6-win];
-                    invalidCount[6-win]++;
+                result.setRateString(win, getHitRateString(result.getCount(), result.getHit(), win));
+                double denominator = getHitRateDenominator(result.getCount(), result.getHit(), win);
+                if(denominator == -1 || denominator > standardDenominatorMap.get(win)){
+                    denominator = standardDenominatorMap.get(win);
+                    invalidCount.put(win, invalidCount.getOrDefault(win, 0) + 1);
                 }
-                denominatorSum[6-win] += denominator;
+                denominatorSum.put(win, denominatorSum.getOrDefault(win, 0.0) + denominator);
             }
-            sb.append("---------- round : " + targetRound + " end ----------- ").append("\n");
+            analysisSummary.addResult(result);
         }
 
         for(int win = 6; win > 2; win--){
-            if(invalidCount[6-win] == testCount)
+            if(invalidCount.getOrDefault(win, 0) == testCount)
                 continue;
-            sb.append(String.format("analysis%d : 1 / %.2f", win, denominatorSum[6-win] / testCount * (testCount / (testCount-invalidCount[6-win])))).append("\n");
-            sb.append("standard" + win + " : " + getHitRateString(45, 6, win)).append("\n");
+            analysisSummary.setDenominator(win, denominatorSum.getOrDefault(win, 0.0) / testCount * (testCount / (testCount-invalidCount.getOrDefault(win, 0))));
         }
-        sb.append("========verifyExclusionNumbers end========").append("\n");
-        return sb.toString();
+
+        return analysisSummary;
     }
 
-    public double getHitRate(int all, int hitCount, int expect){
+    public void saveVerificationResult(String type, int testCount, int targetWin){
+        //테스트 변수영역
+        int maxAnalysisCount = 105;
+
+        Verification verification = verificationRepository.findByRoundAndTypeAndTestCountAndTargetWin(RoundService.getLastRound() + 1, type, testCount, targetWin);
+        if(verification != null) {
+            log.info("already analysed");
+            return;
+        }
+
+        int bestCount = 5;
+        double bestAnalysis = LottoService.getStandardDenominator(targetWin);
+        AnalysisSummary bestResult = null;
+        for(int i = bestCount; i < maxAnalysisCount; i++){
+            Analysis analysis = null;
+            if(type.equals("ex"))
+                analysis = new ExclusionAnalysis(roundService, i);
+            else
+                analysis = new FrequencyAnalysis(roundService, i);
+
+            AnalysisSummary result = verify(testCount, analysis);
+
+            double analysis5 = result.getDenominatorMap().getOrDefault(targetWin, bestAnalysis + 1);
+            if(Math.min(analysis5, bestAnalysis) == analysis5){
+                bestCount = i;
+                bestAnalysis = analysis5;
+                bestResult = result;
+            }
+        }
+        if(bestResult != null){
+            System.out.println(bestResult);
+            System.out.printf("bestCount : %d\n", bestCount);
+        } else {
+            bestCount = -1;
+        }
+        verification = new Verification(null, RoundService.getLastRound() + 1, type, testCount, bestCount, targetWin);
+        verificationRepository.save(verification);
+    }
+
+    public static double getHitRate(int all, int hitCount, int expect){
         try {
             return CombinatoricsUtils.binomialCoefficientDouble(hitCount, expect)
                     * CombinatoricsUtils.binomialCoefficientDouble(all - hitCount, 6 - expect)
@@ -97,7 +126,7 @@ public class LottoService {
         }
     }
 
-    public double getHitRateDenominator(int all, int hitCount, int expect){
+    public static double getHitRateDenominator(int all, int hitCount, int expect){
         try {
             return CombinatoricsUtils.binomialCoefficientDouble(all, 6)
                     / (CombinatoricsUtils.binomialCoefficientDouble(hitCount, expect)
@@ -114,7 +143,7 @@ public class LottoService {
      * @param expect
      * @return
      */
-    public String getHitRateString(int all, int hitCount, int expect){
+    public static String getHitRateString(int all, int hitCount, int expect){
         if(hitCount < expect
                 || all - hitCount < 6 - expect
                 || all < 6)
