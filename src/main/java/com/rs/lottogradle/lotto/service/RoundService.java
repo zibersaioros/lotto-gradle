@@ -42,6 +42,11 @@ public class RoundService {
 
     }
 
+    public boolean isLatestData(){
+        Round lastStoredRound = roundRepository.findTopByOrderByRoundDesc();
+        return lastStoredRound.getRound() == getLastRound();
+    }
+
     public List<Round> findAllByOrderByRoundDesc(){
         return roundRepository.findAllByOrderByRoundDesc();
     }

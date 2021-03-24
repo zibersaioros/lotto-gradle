@@ -10,6 +10,7 @@ import com.rs.lottogradle.lotto.repository.VerificationRepository;
 import com.rs.lottogradle.lotto.service.analysis.Analysis;
 import com.rs.lottogradle.lotto.service.analysis.ExclusionAnalysis;
 import com.rs.lottogradle.lotto.service.analysis.FrequencyAnalysis;
+import com.rs.lottogradle.lotto.service.analysis.RetainAnalysis;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.math3.util.CombinatoricsUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,8 +33,9 @@ public class LottoService {
     @Autowired
     private VerificationRepository verificationRepository;
 
-    public static final Map<Integer, Double> standardDenominatorMap;
+    static Map<Integer, Double> standardDenominatorMap;
     static {
+        log.info("======== static called =======");
         standardDenominatorMap = Maps.newHashMap();
         for(int win = 6; win > 2; win--){
             standardDenominatorMap.put(win, getHitRateDenominator(45, 6, win));
@@ -41,6 +43,7 @@ public class LottoService {
     }
 
     public static double getStandardDenominator(int win){
+        log.info("======== getStandardDenominator called =======");
         return standardDenominatorMap.get(win);
     }
 
@@ -77,18 +80,18 @@ public class LottoService {
         return analysisSummary;
     }
 
-    public void saveVerificationResult(String type, int testCount, int targetWin){
+    public Verification saveVerificationResult(String type, int testCount, int targetWin){
         //테스트 변수영역
         int maxAnalysisCount = 105;
 
         Verification verification = verificationRepository.findByRoundAndTypeAndTestCountAndTargetWin(RoundService.getLastRound() + 1, type, testCount, targetWin);
         if(verification != null) {
             log.info("already analysed");
-            return;
+            return verification;
         }
 
         int bestCount = 5;
-        double bestAnalysis = LottoService.getStandardDenominator(targetWin);
+        double bestAnalysis = getStandardDenominator(targetWin);
         AnalysisSummary bestResult = null;
         for(int i = bestCount; i < maxAnalysisCount; i++){
             Analysis analysis = null;
@@ -113,7 +116,21 @@ public class LottoService {
             bestCount = -1;
         }
         verification = new Verification(null, RoundService.getLastRound() + 1, type, testCount, bestCount, targetWin);
-        verificationRepository.save(verification);
+        return verificationRepository.save(verification);
+    }
+
+
+    public List<Integer> getVerifiedNumbers(int testCount, int targetWin) throws Exception {
+        if(!roundService.isLatestData())
+            throw new Exception("is not latest data");
+        Verification exVerification = saveVerificationResult("ex", testCount, targetWin);
+        Verification frVerification = saveVerificationResult("fr", testCount, targetWin);
+
+        RetainAnalysis retainAnalysis = new RetainAnalysis();
+        retainAnalysis.setAnalysisList(
+                new ExclusionAnalysis(roundService, exVerification.getBestCount())
+                , new FrequencyAnalysis(roundService, frVerification.getBestCount()));
+        return retainAnalysis.getNumbers(RoundService.getLastRound() + 1);
     }
 
     public static double getHitRate(int all, int hitCount, int expect){
@@ -164,4 +181,6 @@ public class LottoService {
         }
         return count;
     }
+
+
 }
